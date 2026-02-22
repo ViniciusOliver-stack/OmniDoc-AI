@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 # Importamos a função que abre conexão com o banco de dados
 from backend.db.database import get_db
 from backend.models.models import Document, User
+from backend.services.document_processor import process_and_store_pdf
 
 router = APIRouter()
 
@@ -50,9 +51,17 @@ def upload_document(
     db.commit()           # Executa a inserção no banco de dados
     db.refresh(new_document)  # Atualiza o objeto com os dados do banco (ex: id gerado)
     
+    #5. Ingestão Vetorial - Processar o PDF, gerar os chunks, criar os embeddings e salvar no ChromaDB
+    try:
+        process_and_store_pdf(file_path=new_document.file_path, document_id=new_document.id)
+    except Exception as e:
+        db.delete(new_document)  # Remove o documento do banco se algo der errado
+        db.commit()
+        raise HTTPException(status_code=500, detail=f"Erro ao processar o PDF na IA: {str(e)}")
+    
     # Retornamos uma mensagem de sucesso com os dados do documento
     return {
-        "message": "Upload Realizado com sucesso!",
+        "message": "Upload e indexação na IA realizados com sucesso!",
         "document_id": new_document.id,
         "filename": new_document.filename,
     }
