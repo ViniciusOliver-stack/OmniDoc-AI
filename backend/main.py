@@ -1,19 +1,35 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from backend.db.database import engine, Base
-from  backend.api import documents, user
+from backend.api import documents, user, chat, auth
 
-# Importar os Models para que o SQLAlchemy os "Conheça"
 from backend.models.models import User, Document, ChatHistory
 
-app = FastAPI()
+app = FastAPI(
+    title="OmniDoc AI",
+    description="Assistente de documentos corporativos com RAG multi-escopo.",
+    version="2.0.0"
+)
 
-# Cria as tabelas no banco automaticamente ao iniciar a aplicação
-# Se a tabela já existe, ele não recria (não apaga seus dados)
+# CORS para o frontend Streamlit se comunicar com o backend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Cria as tabelas automaticamente (não recria se já existem)
 Base.metadata.create_all(bind=engine)
-  
-app.include_router(documents.router) # Adiciona as rotas de documentos à aplicação 
-app.include_router(user.router)      # Adiciona as rotas de usuário à aplicação
-    
-@app.get("/")
+
+# Registra os routers
+app.include_router(auth.router)        # /auth/login, /auth/register, /auth/me
+app.include_router(documents.router)   # /documents/upload/company, /documents/upload/personal
+app.include_router(user.router)        # /users/
+app.include_router(chat.router)        # /chat/
+
+
+@app.get("/", tags=["Health"])
 def raiz():
-    return {"mensagem": "API funcionando!"}
+    return {"status": "ok", "message": "OmniDoc AI v2.0 rodando!"}

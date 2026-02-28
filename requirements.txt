@@ -2,9 +2,16 @@ fastapi
 uvicorn
 sqlalchemy
 psycopg2-binary
-python-dontenv
+python-dotenv
 python-multipart
 chromadb
 langchain
 langchain-community
+langchain-google-genai
 pypdf
+streamlit
+requests
+streamlit-cookies-controller
+# Autenticação JWT + Hash de Senhas
+python-jose[cryptography]
+bcrypt
