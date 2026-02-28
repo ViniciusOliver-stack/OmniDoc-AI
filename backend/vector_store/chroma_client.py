@@ -25,3 +25,20 @@ def get_chroma_collection():
     de forma limpa e modular.
     """
     return document_collection
+
+
+def delete_document_chunks(document_id: int):
+    """
+    Remove TODOS os chunks de um documento do ChromaDB.
+    Deve ser chamado sempre que um documento for deletado do PostgreSQL
+    para evitar chunks órfãos que poluem as buscas RAG.
+    """
+    collection = get_chroma_collection()
+    # Busca todos os IDs de chunks que pertencem a esse document_id
+    results = collection.get(where={"document_id": document_id})
+    ids_to_delete = results.get("ids", [])
+    if ids_to_delete:
+        collection.delete(ids=ids_to_delete)
+        print(f"[✓] ChromaDB: {len(ids_to_delete)} chunks do documento {document_id} removidos.")
+    else:
+        print(f"[!] ChromaDB: Nenhum chunk encontrado para o documento {document_id}.")

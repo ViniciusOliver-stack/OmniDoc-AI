@@ -48,29 +48,78 @@ st.markdown("""
         font-weight: bold;
     }
 
-    /* Reduz o padding do file_uploader para ficar compacto */
+    /* ─── Uploader como botão de clipe compacto ─── */
+
+    /* Remove espaçamento externo do bloco do uploader */
     [data-testid="stFileUploader"] {
-        padding-bottom: 0;
-    }
-    [data-testid="stFileUploader"] section {
-        padding: 8px 12px;
-        border: 1px dashed #444;
-        border-radius: 8px;
-        background: transparent;
-    }
-    [data-testid="stFileUploader"] section > div {
-        font-size: 13px;
-    }
-    /* Esconde o label "Drag and drop" pesado */
-    [data-testid="stFileUploaderDropzoneInstructions"] div:nth-child(2) {
-        display: none;
+        margin-bottom: -8px !important;
     }
 
-    /* Área de anexo no chat */
-    .attach-label {
+    /* Sem visual de drop zone */
+    [data-testid="stFileUploader"] section {
+        padding: 0 !important;
+        border: none !important;
+        background: transparent !important;
+        min-height: unset !important;
+    }
+
+    /* Dropzone → pill minimalista "📎 Anexar PDF" */
+    [data-testid="stFileUploaderDropzone"] {
+        min-height: 36px !important;
+        height: 36px !important;
+        width: auto !important;
+        max-width: 160px !important;
+        border-radius: 18px !important;
+        border: 1px dashed rgba(255,255,255,0.22) !important;
+        background: rgba(255,255,255,0.04) !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        cursor: pointer !important;
+        padding: 0 14px !important;
+        transition: background 0.2s, border-color 0.2s !important;
+        margin-bottom: 4px !important;
+    }
+    [data-testid="stFileUploaderDropzone"]:hover {
+        background: rgba(255,255,255,0.09) !important;
+        border-color: rgba(255,255,255,0.45) !important;
+    }
+
+    /* Esconde texto de instruções e botão "Browse files" */
+    [data-testid="stFileUploaderDropzoneInstructions"] { display: none !important; }
+    [data-testid="stFileUploaderDropzone"] button         { display: none !important; }
+
+    /* Rótulo visual via pseudo-element */
+    [data-testid="stFileUploaderDropzone"]::after {
+        content: "📎  Anexar PDF";
         font-size: 12px;
-        color: #888;
-        margin-bottom: 4px;
+        color: rgba(255,255,255,0.45);
+        white-space: nowrap;
+        pointer-events: none;
+    }
+
+    /* Preview nativo quando arquivo está selecionado: escondemos — usamos o chip abaixo */
+    [data-testid="stFileUploaderDeleteBtn"] { display: none !important; }
+    [data-testid="stFileUploader"] [class*="uploadedFile"] {
+        display: none !important;
+    }
+
+    /* Chip do arquivo selecionado */
+    .file-chip-bar {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        background: rgba(14, 165, 233, 0.13);
+        border: 1px solid rgba(14, 165, 233, 0.32);
+        border-radius: 18px;
+        padding: 4px 12px;
+        font-size: 12px;
+        color: #7dd3fc;
+        max-width: 80%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        margin-bottom: 6px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -86,6 +135,10 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 if "pending_upload" not in st.session_state:
     st.session_state.pending_upload = None
+if "uploader_key" not in st.session_state:
+    st.session_state.uploader_key = 0
+if "history_loaded" not in st.session_state:
+    st.session_state.history_loaded = False
 
 # Restaura sessão do cookie quando a página é recarregada.
 # _saved_token é None no 1º render (JS ainda carregando) e tem valor no 2º rerun.
@@ -136,6 +189,15 @@ def api_get(endpoint: str):
         return None
 
 
+def api_delete(endpoint: str):
+    try:
+        r = requests.delete(f"{API_URL}{endpoint}", headers=get_headers())
+        return r
+    except requests.exceptions.ConnectionError:
+        st.error("❌ Não foi possível conectar ao backend.")
+        return None
+
+
 def do_login(email: str, password: str):
     try:
         r = requests.post(
@@ -151,6 +213,8 @@ def do_login(email: str, password: str):
                 "role": data["role"]
             }
             st.session_state.messages = []
+            # Força recarga do histórico na próxima renderização
+            st.session_state.history_loaded = False
             # Salva o token no cookie.
             # IMPORTANTE: NÃO chamar st.rerun() aqui — o rerun interromperia
             # o render antes do JavaScript do cookie_manager executar,
@@ -237,6 +301,19 @@ def show_main_page():
     user = st.session_state.user_info
     is_admin = user["role"] == "admin"
 
+    # ── Restaura histórico da conversa do banco (uma vez por sessão) ──
+    if not st.session_state.history_loaded:
+        try:
+            r = api_get("/chat/history?limit=50")
+            if r is not None and r.status_code == 200:
+                st.session_state.messages = []
+                for item in r.json():
+                    st.session_state.messages.append({"role": "user", "content": item["query"]})
+                    st.session_state.messages.append({"role": "assistant", "content": item["response"]})
+        except Exception:
+            pass  # falha silenciosa — não impede o uso do chat
+        st.session_state.history_loaded = True
+
     # ── Sidebar ──────────────────────────────
     with st.sidebar:
         st.title("✨ OmniDoc AI")
@@ -255,6 +332,7 @@ def show_main_page():
             st.session_state.token = None
             st.session_state.user_info = None
             st.session_state.messages = []
+            st.session_state.history_loaded = False
             st.rerun()
 
         st.divider()
@@ -289,7 +367,7 @@ def show_main_page():
                             with col_b:
                                 if st.button("🗑️", key=f"del_company_{d['id']}",
                                              help="Remover documento"):
-                                    api_post(f"/documents/{d['id']}", json={})
+                                    api_delete(f"/documents/{d['id']}")
                                     st.rerun()
 
         # ── Painel do Usuário (documentos pessoais) ──
@@ -327,16 +405,27 @@ def show_main_page():
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
 
-    # ── Área de Input com Anexo ──────────────
-    st.markdown('<p class="attach-label">📎 Anexar PDF à conversa (opcional — será indexado como documento pessoal)</p>',
-                unsafe_allow_html=True)
-
+    # ── Botão de clipe (posicionado via CSS sobre o chat input) ──
     attached_file = st.file_uploader(
         label="Anexar PDF",
         type=["pdf"],
         label_visibility="collapsed",
-        key="chat_file_uploader"
+        key=f"chat_file_uploader_{st.session_state.uploader_key}",
     )
+
+    # Chip flutuante quando há arquivo selecionado
+    if attached_file is not None:
+        chip_col, x_col = st.columns([10, 1])
+        with chip_col:
+            st.markdown(
+                f'<div class="file-chip-bar">📎 <b>{attached_file.name}</b>'
+                f'<span style="opacity:.6; font-size:11px"> — será indexado ao enviar</span></div>',
+                unsafe_allow_html=True
+            )
+        with x_col:
+            if st.button("✕", key="btn_clear_file", help="Remover arquivo"):
+                st.session_state.uploader_key += 1
+                st.rerun()
 
     # Campo de chat (fixo no fundo)
     prompt = st.chat_input("Faça uma pergunta sobre os documentos...")
@@ -344,10 +433,12 @@ def show_main_page():
     if prompt:
         # 1. Se há arquivo anexado, faz upload como documento pessoal primeiro
         if attached_file:
-            with st.spinner(f"Indexando '{attached_file.name}'..."):
+            with st.spinner(f"Indexando '{attached_file.name}'... (PDFs grandes podem demorar devido ao rate limit da API)"):
                 success = upload_document(attached_file, "personal")
             if success:
                 st.toast(f"✅ '{attached_file.name}' indexado com sucesso!", icon="📄")
+                # Limpa o uploader após indexar com sucesso
+                st.session_state.uploader_key += 1
             else:
                 st.stop()
 

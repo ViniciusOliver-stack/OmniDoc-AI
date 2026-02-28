@@ -5,7 +5,11 @@ embedding_model = GoogleGenerativeAIEmbeddings(model="gemini-embedding-001")
 llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.2)
 
 
-def generate_answer(user_query: str, user_id: int) -> str:
+def generate_answer(
+    user_query: str,
+    user_id: int,
+    conversation_history: list | None = None
+) -> str:
     """
     Busca contexto no banco vetorial com filtro MULTI-ESCOPO e gera a resposta.
 
@@ -15,6 +19,9 @@ def generate_answer(user_query: str, user_id: int) -> str:
 
     O usuário não precisa selecionar nenhum documento — a IA busca em tudo
     que é relevante automaticamente.
+
+    conversation_history: lista de dicts {"query": str, "response": str}
+    com as mensagens anteriores do usuário (mais antigas primeiro).
     """
     collection = get_chroma_collection()
 
@@ -46,31 +53,42 @@ def generate_answer(user_query: str, user_id: int) -> str:
     all_chunks = company_chunks + personal_chunks
 
     if not all_chunks:
-        return (
-            "Desculpe, não encontrei nenhum documento na base de conhecimento que responda "
-            "à sua pergunta. Se você tem um documento relevante, pode anexá-lo na conversa."
+        context_section = "(Nenhum documento encontrado na base de conhecimento.)"
+        has_context = False
+    else:
+        context_section = "\n\n---\n\n".join(all_chunks)
+        has_context = True
+
+    # ── Histórico de conversa ──
+    history_section = ""
+    if conversation_history:
+        turns = []
+        for turn in conversation_history:
+            turns.append(f"Usuário: {turn['query']}")
+            turns.append(f"Assistente: {turn['response']}")
+        history_section = (
+            "Histórico da conversa (mensagens anteriores, da mais antiga para a mais recente):\n"
+            + "\n".join(turns)
+            + "\n"
         )
 
-    context = "\n\n---\n\n".join(all_chunks)
-
     prompt = f"""
-Você é um assistente corporativo especializado e prestativo.
+Você é um assistente corporativo especializado, inteligente e prestativo.
 
-Sua missão é responder à pergunta do usuário utilizando APENAS as informações contidas
-nos fragmentos de contexto abaixo. Esses fragmentos vêm de documentos da empresa e/ou
-documentos pessoais do próprio usuário.
+Você tem acesso a fragmentos de documentos da empresa e/ou documentos pessoais do usuário.
+Sua missão é ajudar o usuário da melhor forma possível, seguindo estas regras:
 
-REGRAS IMPORTANTES:
-1. Use SOMENTE o contexto fornecido. Nunca invente ou suponha informações.
-2. Se a informação não estiver no contexto, responda exatamente:
-   "Não encontrei essa informação nos documentos disponíveis. Por favor, verifique com o responsável ou envie um documento mais específico."
-3. Seja claro, objetivo e profissional.
-4. Se relevante, indique de qual trecho tirou a informação.
+1. Se a pergunta pode ser respondida pelos documentos fornecidos, priorize SEMPRE o conteúdo dos documentos.
+2. Se os documentos são parcialmente relevantes, combine-os com seu conhecimento geral para dar uma resposta completa. Indique claramente o que vem do documento e o que é conhecimento geral.
+3. Se a pergunta for completamente independente dos documentos (ex: perguntas gerais, pedidos de criação de conteúdo, dúvidas genéricas), responda normalmente usando seu conhecimento. Não invente informações sobre a empresa sem base nos documentos.
+4. Nunca invente dados específicos da empresa (números, nomes, regras) que não estejam nos documentos.
+5. Você tem memória do histórico desta conversa. Use-o para entender referências como "meu nome", "aquela história que contei", "o que falei antes", etc.
 
-Contexto dos documentos:
-{context}
+{history_section}
+Fragmentos dos documentos disponíveis:
+{context_section}
 
-Pergunta do usuário:
+Pergunta atual do usuário:
 {user_query}
 
 Resposta:

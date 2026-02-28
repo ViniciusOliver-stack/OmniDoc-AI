@@ -29,10 +29,24 @@ def ask_question(
 
     Não é necessário informar nenhum ID de documento.
     """
+    # Carrega os últimos 10 turnos do histórico do usuário para dar memória à IA
+    recent_history = (
+        db.query(ChatHistory)
+        .filter(ChatHistory.user_id == current_user.id)
+        .order_by(ChatHistory.created_at.asc())
+        .limit(10)
+        .all()
+    )
+    conv_history = [
+        {"query": h.user_query, "response": h.ai_response}
+        for h in recent_history
+    ]
+
     try:
         ai_response = generate_answer(
             user_query=request.query,
-            user_id=current_user.id
+            user_id=current_user.id,
+            conversation_history=conv_history
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro ao gerar resposta: {str(e)}")

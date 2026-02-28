@@ -15,3 +15,5 @@ streamlit-cookies-controller
 # Autenticação JWT + Hash de Senhas
 python-jose[cryptography]
 bcrypt
+# AWS S3
+boto3
